@@ -73,7 +73,8 @@ class AbstractTTSEngine(object):
     def play(self, filename):
         # FIXME: Use platform-independent audio-output here
         # See issue jasperproject/jasper-client#188
-        cmd = ['aplay', '-D', 'plughw:1,0', str(filename)]
+        #cmd = ['aplay', '-D', 'plughw:1,0', str(filename)]
+        cmd = ['mplayer', str(filename)]
         self._logger.debug('Executing %s', ' '.join([pipes.quote(arg)
                                                      for arg in cmd]))
         with tempfile.TemporaryFile() as f:
@@ -465,12 +466,20 @@ class GoogleTTS(AbstractMp3TTSEngine):
         if self.language not in self.languages:
             raise ValueError("Language '%s' not supported by '%s'",
                              self.language, self.SLUG)
-        tts = gtts.gTTS(text=phrase, lang=self.language)
-        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
-            tmpfile = f.name
-        tts.save(tmpfile)
-        self.play_mp3(tmpfile)
-        os.remove(tmpfile)
+        while True:
+            try:
+                tts = gtts.gTTS(text=phrase, lang=self.language)
+                with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
+                    tmpfile = f.name
+                tts.save(tmpfile)
+
+                self.play_mp3(tmpfile)
+                os.remove(tmpfile)
+            except requests.exceptions.HTTPError as e:
+                print ('retry: ' + str (e))
+                continue
+            break
+
 
 
 class MaryTTS(AbstractTTSEngine):
@@ -630,9 +639,14 @@ class IvonaTTS(AbstractMp3TTSEngine):
         self._logger.debug("Saying '%s' with '%s'", phrase, self.SLUG)
         with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
             tmpfile = f.name
-        self._pyvonavoice.fetch_voice(phrase, tmpfile)
-        self.play_mp3(tmpfile)
-        os.remove(tmpfile)
+
+        try:
+            self._pyvonavoice.fetch_voice(phrase, tmpfile)
+            self.play_mp3(tmpfile)
+            os.remove(tmpfile)
+        except pyvona.PyvonaException as e:
+            print e
+
 
 
 def get_default_engine_slug():
